@@ -54,7 +54,17 @@ class Decode:
             reg2=self.parse_reg(reg_str)
             offset=int(offset_str)
             return reg1,offset,reg2
-
+            
+        def fill_values(self, decoded, registers, labels):
+         """Add actual register values into decoded dict"""
+        if "rs1" in decoded:
+           decoded["rs1_val"] = registers.read(decoded["rs1"])
+        if "rs2" in decoded:
+           decoded["rs2_val"] = registers.read(decoded["rs2"])
+         # resolve label to line number
+        if "label" in decoded:
+              decoded["target_pc"] = labels[decoded["label"]]
+        return decoded
 
 
                            
