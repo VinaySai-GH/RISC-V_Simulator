@@ -1,62 +1,74 @@
 class ForwardingUnit:
-    def __init__(self):
-        pass
-
     def check(self, id_ex, ex_mem, mem_wb):
-        """
-        Check if values in EX_MEM or MEM_WB can be
-        forwarded to the current instruction in ID_EX.
-        Returns updated id_ex with correct values.
-        """
         if id_ex is None:
-            return id_ex, 0   # (instruction, stall_count)
+            return id_ex, 0, []
 
-        stalls = 0
+        stalls  = 0
+        hazards = []
 
-        # --- Forward from EX_MEM stage ---
-        if ex_mem is not None and "rd" in ex_mem:
-            forwarded = self.try_forward(id_ex, ex_mem)
-            if forwarded:
-                id_ex = forwarded
+        # EX-EX forwarding
+        if ex_mem is not None and "rd" in ex_mem and ex_mem["rd"] != 0:
+            if self.needs_reg(id_ex, ex_mem["rd"]):
+                if ex_mem["op"] != "LW":
+                    id_ex = self.try_forward(id_ex, ex_mem)
+                    hazards.append(
+                        f"DATA HAZARD (EX-EX): forwarded x{ex_mem['rd']} "
+                        f"from {ex_mem['op']} -> {id_ex['op']}"
+                    )
 
-        # --- Forward from MEM_WB stage ---
-        if mem_wb is not None and "rd" in mem_wb:
-            forwarded = self.try_forward(id_ex, mem_wb)
-            if forwarded:
-                id_ex = forwarded
+        # MEM-EX forwarding
+        if mem_wb is not None and "rd" in mem_wb and mem_wb["rd"] != 0:
+            if self.needs_reg(id_ex, mem_wb["rd"]):
+                id_ex = self.try_forward(id_ex, mem_wb)
+                hazards.append(
+                    f"DATA HAZARD (MEM-EX): forwarded x{mem_wb['rd']} "
+                    f"from {mem_wb['op']} -> {id_ex['op']}"
+                )
 
-        # --- LW hazard — must stall, can't forward ---
-        # LW result only available after Memory stage
+        # LOAD-USE hazard — must stall
         if (ex_mem is not None and
             ex_mem["op"] == "LW" and
             "rd" in ex_mem and
+            ex_mem["rd"] != 0 and
             self.needs_reg(id_ex, ex_mem["rd"])):
-            stalls = 1   # insert one bubble
+            stalls = 1
+            hazards.append(
+                f"LOAD-USE HAZARD: stall inserted — "
+                f"LW x{ex_mem['rd']} not ready for {id_ex['op']}"
+            )
 
-        return id_ex, stalls
+        return id_ex, stalls, hazards
 
     def try_forward(self, id_ex, source):
-        """
-        If source instruction writes to a register
-        that id_ex needs — forward the value.
-        """
-        if "rd" not in source or "alu_result" not in source:
-            return None
-
-        rd  = source["rd"]
-        val = source["alu_result"]
-
-        # forward to rs1
+        if "rd" not in source:
+            return id_ex
+        rd = source["rd"]
+        # LW: forward mem_data (loaded value), NOT alu_result (the address)
+        if source["op"] == "LW" and "mem_data" in source:
+            val = source["mem_data"]
+        elif "alu_result" in source:
+            val = source["alu_result"]
+        else:
+            return id_ex
         if id_ex.get("rs1") == rd:
             id_ex["rs1_val"] = val
-
-        # forward to rs2
         if id_ex.get("rs2") == rd:
             id_ex["rs2_val"] = val
-
         return id_ex
 
     def needs_reg(self, id_ex, rd):
-        """Does id_ex need register rd?"""
         return (id_ex.get("rs1") == rd or
                 id_ex.get("rs2") == rd)
+
+    def stall_only(self, id_ex, ex_mem, mem_wb):
+        """Without forwarding: stall whenever a needed reg is still in-flight."""
+        if id_ex is None:
+            return 0
+        stalls = 0
+        if ex_mem is not None and ex_mem.get("rd", 0) != 0:
+            if self.needs_reg(id_ex, ex_mem["rd"]):
+                stalls = max(stalls, 1)
+        if mem_wb is not None and mem_wb.get("rd", 0) != 0:
+            if self.needs_reg(id_ex, mem_wb["rd"]):
+                stalls = max(stalls, 1)
+        return stalls

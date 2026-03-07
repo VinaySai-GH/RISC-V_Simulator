@@ -2,48 +2,41 @@ from core.decoder import Decoder
 from core.alu import ALU
 
 decoder = Decoder()
-alu = ALU()
+alu     = ALU()
 
 def fetch(instructions, pc):
-    """Get instruction at current PC"""
     if pc >= len(instructions):
-        return None          # no more instructions
+        return None
     return instructions[pc]
 
 def decode(instruction):
-    """Break instruction into parts"""
     if instruction is None:
         return None
     return decoder.decode(instruction)
 
 def execute(decoded):
-    """Run the ALU"""
     if decoded is None:
         return None
 
-    op  = decoded["op"]
+    op = decoded["op"]
 
-    # R-type: ADD, SUB, AND, OR, SLT
     if decoded["type"] == "R":
         a = decoded["rs1_val"]
         b = decoded["rs2_val"]
 
-    # I-type: LW
     elif decoded["type"] == "I":
         a = decoded["rs1_val"]
         b = decoded["offset"]
 
-    # S-type: SW
     elif decoded["type"] == "S":
+        # address = base(rs1) + offset
         a = decoded["rs1_val"]
         b = decoded["offset"]
 
-    # B-type: BNE
     elif decoded["type"] == "B":
         a = decoded["rs1_val"]
         b = decoded["rs2_val"]
 
-    # J-type: JAL
     elif decoded["type"] == "J":
         a, b = 0, 0
 
@@ -52,31 +45,21 @@ def execute(decoded):
     return decoded
 
 def memory_access(decoded, memory):
-    """Load or store from RAM"""
     if decoded is None:
         return None
-
     if decoded["op"] == "LW":
-        address = decoded["alu_result"]
-        decoded["mem_data"] = memory.load(address)
-
+        decoded["mem_data"] = memory.load(decoded["alu_result"])
     elif decoded["op"] == "SW":
         address = decoded["alu_result"]
-        memory.store(address, decoded["rs2_val"])
-
+        value   = decoded["rs2_val"]
+        memory.store(address, value)
     return decoded
 
 def writeback(decoded, registers):
-    """Write result back to register"""
     if decoded is None:
         return
-
     op = decoded["op"]
-
-    if op in ("ADD", "SUB", "AND", "OR", "SLT","ADDI"):
+    if op in ("ADD", "SUB", "ADDI", "AND", "OR", "SLT"):
         registers.write(decoded["rd"], decoded["alu_result"])
-
     elif op == "LW":
         registers.write(decoded["rd"], decoded["mem_data"])
-
-    # SW, BNE, JAL don't write to a register
