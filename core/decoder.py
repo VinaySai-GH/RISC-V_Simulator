@@ -41,6 +41,14 @@ class Decode:
                     "rd":self.parse_reg(operands[0]),
                     "label":operands[1],
                    }
+        elif op == "ADDI":
+                  return {
+        "op"    : op,
+        "type"  : "I",
+        "rd"    : self.parse_reg(operands[0]),
+        "rs1"   : self.parse_reg(operands[1]),
+        "offset": int(operands[2]),
+    }
         else:
                     raise Exception(f"unknown instruction:{op}")
 

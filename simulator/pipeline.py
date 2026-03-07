@@ -3,7 +3,7 @@ from core.memory import Memory
 from core.decoder import Decoder
 from utils.assembler import Assembler
 from simulator.stages import fetch, decode, execute, memory_access, writeback
-
+from simulator.forwarding import ForwardingUnit
 class Pipeline:
     def __init__(self, instructions, labels, use_pipeline, use_forwarding, config):
         self.instructions    = instructions
@@ -19,6 +19,7 @@ class Pipeline:
         self.pc        = 0
         self.cycles    = 0
         self.stalls    = 0
+        self.forwarding_unit = ForwardingUnit()
         self.instr_completed = 0
 
     def run(self):
@@ -88,6 +89,17 @@ class Pipeline:
                     ID_EX = self.decoder.fill_values(ID_EX, self.registers, self.labels)
             else:
                 ID_EX = None
+
+              # --- Forwarding / Hazard Detection ---
+            if self.use_forwarding and ID_EX is not None:
+             ID_EX, stall_count = self.forwarding_unit.check(ID_EX, EX_MEM, MEM_WB)
+             self.stalls += stall_count
+            if stall_count > 0:
+              # insert bubble — freeze fetch and decode
+             IF_ID = IF_ID   # hold
+            ID_EX = None    # insert NOP
+            self.pc -= 1    # re-fetch same instruction next cycle
+            self.cycles += stall_count    
 
             # --- Fetch ---
             raw   = fetch(self.instructions, self.pc)
