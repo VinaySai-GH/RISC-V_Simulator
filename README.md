@@ -80,7 +80,7 @@ Went through the hazard detection and pipeline code together. Stall counts looke
 **Members:** Vinay Sai, Maneesh  
 **Duration:** ~15 minutes
 
-Maneesh took over the simulator side — pipeline stages, forwarding unit, and the main pipeline loop. Vinay helped out here and there but Maneesh did most of the heavy lifting on this part. Talked about how to handle branches in the pipeline (flushing IF_ID and ID_EX on a taken BNE/JAL) and agreed on using simple Python variables for the pipeline registers (IF_ID, ID_EX, EX_MEM, MEM_WB).
+Maneesh took over the simulator side  forwarding unit, and the main pipeline loop. Vinay did the stages part   but Maneesh did most of the heavy lifting on this part. Talked about how to handle branches in the pipeline (flushing IF_ID and ID_EX on a taken BNE/JAL) and agreed on using simple Python variables for the pipeline registers (IF_ID, ID_EX, EX_MEM, MEM_WB).
 
 ---
 
