@@ -12,5 +12,5 @@ class RegisterFile:
 
     def display(self):
         for i, val in enumerate(self.registers):
-            if val != 0:              # only show non-zero registers
+            if val != 0:
                 print(f"  x{i} = {val}")

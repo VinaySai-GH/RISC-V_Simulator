@@ -25,6 +25,10 @@ class Pipeline:
         self.instr_completed = 0
         self.hazard_log      = []
 
+    def get_latency(self, op):
+        latencies = self.config.get("latencies", {})
+        return latencies.get(op, 1)
+
     def run(self):
         if self.use_pipeline:
             self.run_pipelined()
@@ -41,20 +45,26 @@ class Pipeline:
             if raw is None:
                 break
             decoded   = decode(raw)
-            decoded   = self.decoder.fill_values(decoded, self.registers, self.labels)
+            decoded   = self.decoder.fill_values(
+                decoded, self.registers, self.labels)
+            if decoded["op"] == "JAL":
+                decoded["pc_plus_4"] = (self.pc + 1) * 4
             executed  = execute(decoded)
             after_mem = memory_access(executed, self.memory)
             writeback(after_mem, self.registers)
-
-            next_pc = self.handle_pc(after_mem)
-            self.pc = next_pc if next_pc != self.pc else self.pc + 1
-
-            self.cycles          += 5
+            next_pc   = self.handle_pc(after_mem)
+            self.pc   = next_pc if next_pc != self.pc else self.pc + 1
+            op_latency            = self.get_latency(after_mem["op"]) if after_mem else 1
+            self.cycles          += 4 + op_latency
             self.instr_completed += 1
             count += 1
 
     def run_pipelined(self):
         print("\n--- Running in PIPELINED mode ---\n")
+
+        if not self.use_forwarding:
+            self.run_pipelined_no_forwarding()
+            return
 
         IF_ID  = None
         ID_EX  = None
@@ -64,84 +74,182 @@ class Pipeline:
 
         while self.cycles < max_cycles:
 
-            # ── WRITEBACK ──────────────────────────────
+            # WRITEBACK
             writeback(MEM_WB, self.registers)
             if MEM_WB is not None:
                 self.instr_completed += 1
 
-            # ── MEMORY ────────────────────────────────
+            # MEMORY
             MEM_WB = memory_access(EX_MEM, self.memory)
 
-            # ── EXECUTE ───────────────────────────────
+            # EXECUTE
             EX_MEM = execute(ID_EX)
 
-            # ── DECODE ────────────────────────────────
+            # latency stalls
+            if EX_MEM is not None:
+                latency = self.get_latency(EX_MEM["op"])
+                if latency > 1:
+                    extra = latency - 1
+                    self.stalls += extra
+                    self.cycles += extra
+                    self.hazard_log.append(
+                        f"LATENCY STALL: {EX_MEM['op']} "
+                        f"latency={latency} -> {extra} extra stall(s)"
+                    )
+
+            # DECODE
             if IF_ID is not None:
                 ID_EX = decode(IF_ID)
                 if ID_EX is not None:
                     ID_EX = self.decoder.fill_values(
                         ID_EX, self.registers, self.labels)
+                    if ID_EX["op"] == "JAL":
+                        ID_EX["pc_plus_4"] = (self.pc + 1) * 4
             else:
                 ID_EX = None
 
-            # ── FORWARDING / STALL ────────────────────
+            # FORWARDING + HAZARD DETECTION
             if ID_EX is not None:
-                if self.use_forwarding:
-                    ID_EX, stall_count, hazards = self.forwarding_unit.check(
-                        ID_EX, EX_MEM, MEM_WB)
-                    self.hazard_log.extend(hazards)
-                else:
-                    stall_count = self.forwarding_unit.stall_only(
-                        ID_EX, EX_MEM, MEM_WB)
+                ID_EX, stall_count, hazards = self.forwarding_unit.check(
+                    ID_EX, EX_MEM, MEM_WB)
+                self.hazard_log.extend(hazards)
                 if stall_count > 0:
                     self.stalls += stall_count
                     self.cycles += stall_count
                     ID_EX   = None
                     self.pc -= 1
 
-            # ── FETCH ─────────────────────────────────
+            # FETCH
             raw   = fetch(self.instructions, self.pc)
             IF_ID = raw
             if raw is not None:
                 self.pc += 1
 
-            # ── BRANCH RESOLUTION ─────────────────────
+            # BRANCH RESOLUTION
             if EX_MEM is not None:
                 if EX_MEM["op"] == "BNE" and EX_MEM["alu_result"] == 1:
                     target = EX_MEM["target_pc"]
-                    self.pc = target
-                    IF_ID   = None
-                    ID_EX   = None
+                    if target != self.pc:
+                        self.pc  = target
+                        IF_ID    = None
+                        ID_EX    = None
+                        self.stalls += 2
+                        self.cycles += 2
+                        self.hazard_log.append(
+                            f"CONTROL HAZARD: BNE taken -> "
+                            f"flushed 2 instructions, "
+                            f"jumped to line {target}"
+                        )
                 elif EX_MEM["op"] == "JAL":
                     target = EX_MEM["target_pc"]
                     if target >= len(self.instructions) - 1:
                         self.pc = len(self.instructions)
-                    else:
-                        self.pc = target
-                    IF_ID   = None
-                    ID_EX   = None
+                    elif target != self.pc:
+                        self.pc  = target
+                        IF_ID    = None
+                        ID_EX    = None
+                        self.stalls += 2
+                        self.cycles += 2
+                        self.hazard_log.append(
+                            f"CONTROL HAZARD: JAL taken -> "
+                            f"flushed 2 instructions, "
+                            f"jumped to line {target}"
+                        )
 
             self.cycles += 1
 
-            # stop when fully drained
             if (IF_ID is None and ID_EX is None and
                 EX_MEM is None and MEM_WB is None and
                 self.pc >= len(self.instructions)):
                 break
 
+    def run_pipelined_no_forwarding(self):
+        """
+        No forwarding mode — execute correctly like simple mode
+        but count stalls and hazards for pipeline overhead.
+        """
+        count = 0
+        max_instructions = 10000
+        prev_decoded = None  # track previous instruction for hazard detection
+
+        while self.pc < len(self.instructions) and count < max_instructions:
+            raw = fetch(self.instructions, self.pc)
+            if raw is None:
+                break
+
+            decoded = decode(raw)
+            decoded = self.decoder.fill_values(
+                decoded, self.registers, self.labels)
+            if decoded["op"] == "JAL":
+                decoded["pc_plus_4"] = (self.pc + 1) * 4
+
+            # detect hazards vs previous instruction
+            if prev_decoded is not None:
+                hazards = self.detect_hazards_no_fwd(decoded, prev_decoded)
+                for h in hazards:
+                    self.hazard_log.append(h)
+                    self.stalls += 3
+                    self.cycles += 3
+
+            # latency stall for LW
+            latency = self.get_latency(decoded["op"])
+            if latency > 1:
+                extra = latency - 1
+                self.stalls += extra
+                self.cycles += extra
+                self.hazard_log.append(
+                    f"LATENCY STALL: {decoded['op']} "
+                    f"latency={latency} -> {extra} extra stall(s)"
+                )
+
+            executed  = execute(decoded)
+            after_mem = memory_access(executed, self.memory)
+            writeback(after_mem, self.registers)
+
+            next_pc = self.handle_pc(after_mem)
+
+            # control hazard
+            if after_mem["op"] in ("BNE", "JAL") and next_pc != self.pc + 1:
+                self.stalls += 2
+                self.cycles += 2
+                self.hazard_log.append(
+                    f"CONTROL HAZARD: {after_mem['op']} taken -> "
+                    f"flushed 2 instructions, jumped to line {next_pc}"
+                )
+
+            prev_decoded = after_mem
+            self.pc   = next_pc if next_pc != self.pc else self.pc + 1
+            self.cycles          += 1
+            self.instr_completed += 1
+            count += 1
+
+    def detect_hazards_no_fwd(self, current, prev):
+        """Detect RAW hazards between consecutive instructions"""
+        hazards = []
+        if "rd" not in prev or prev["rd"] == 0:
+            return hazards
+        rd = prev["rd"]
+        if current.get("rs1") == rd:
+            hazards.append(
+                f"DATA HAZARD: STALL(no-fwd) x{rd} "
+                f"from {prev['op']} -> {current['op']}"
+            )
+        if current.get("rs2") == rd:
+            hazards.append(
+                f"DATA HAZARD: STALL(no-fwd) x{rd} "
+                f"from {prev['op']} -> {current['op']} (rs2)"
+            )
+        return hazards
+
     def handle_pc(self, decoded):
-        """Returns next PC — handles branches and jumps (simple mode only)"""
         if decoded is None:
             return self.pc
-
         if decoded["op"] == "BNE" and decoded["alu_result"] == 1:
             return decoded["target_pc"]
-
         if decoded["op"] == "JAL":
             if decoded["target_pc"] >= len(self.instructions) - 1:
                 return len(self.instructions)
             return decoded["target_pc"]
-
         return self.pc
 
     def print_stats(self):
@@ -152,14 +260,12 @@ class Pipeline:
         print(f"Stalls                 : {self.stalls}")
         print(f"IPC                    : {ipc:.2f}")
         print("=============================")
-
         print("\n--- Hazards Detected ---")
         if self.hazard_log:
             for h in self.hazard_log:
                 print(f"  {h}")
         else:
             print("  None")
-
         print("\nFinal Register State (non-zero only):")
         self.registers.display()
         print("\nSorted Array:")
