@@ -21,4 +21,4 @@ class ALU:
         elif op == "JAL":
             return 1
         else:
-            raise Exception(f"ALU: unknown operation '{op}'")
+            raise Exception(f"ALU: unknown op '{op}'")

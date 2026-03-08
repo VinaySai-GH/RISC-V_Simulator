@@ -52,10 +52,11 @@ class Decoder:
 
         elif op == "JAL":
             return {
-                "op"   : op,
-                "type" : "J",
-                "rd"   : self.parse_reg(operands[0]),
-                "label": operands[1],
+                "op"      : op,
+                "type"    : "J",
+                "rd"      : self.parse_reg(operands[0]),
+                "label"   : operands[1],
+                "pc_plus_4": 0,   # filled by pipeline
             }
 
         else:

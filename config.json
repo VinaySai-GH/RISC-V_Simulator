@@ -1,12 +1,16 @@
 {
-  "pipeline": true,
-  "forwarding": true,
-  "latencies": {
-    "ADD": 1,
-    "SUB": 1,
-    "LW": 2,
-    "SW": 1,
-    "BNE": 1,
-    "JAL": 1
-  }
+    "pipeline": true,
+    "forwarding": true,
+    "latencies": {
+        "ADD":  1,
+        "SUB":  1,
+        "ADDI": 1,
+        "SLT":  1,
+        "AND":  1,
+        "OR":   1,
+        "LW":   2,
+        "SW":   1,
+        "BNE":  1,
+        "JAL":  1
+    }
 }

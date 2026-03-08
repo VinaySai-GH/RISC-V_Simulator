@@ -25,7 +25,7 @@ class ForwardingUnit:
                     f"from {mem_wb['op']} -> {id_ex['op']}"
                 )
 
-        # LOAD-USE hazard — must stall
+        # LOAD-USE hazard
         if (ex_mem is not None and
             ex_mem["op"] == "LW" and
             "rd" in ex_mem and
@@ -40,16 +40,10 @@ class ForwardingUnit:
         return id_ex, stalls, hazards
 
     def try_forward(self, id_ex, source):
-        if "rd" not in source:
+        if "rd" not in source or "alu_result" not in source:
             return id_ex
-        rd = source["rd"]
-        # LW: forward mem_data (loaded value), NOT alu_result (the address)
-        if source["op"] == "LW" and "mem_data" in source:
-            val = source["mem_data"]
-        elif "alu_result" in source:
-            val = source["alu_result"]
-        else:
-            return id_ex
+        rd  = source["rd"]
+        val = source["alu_result"]
         if id_ex.get("rs1") == rd:
             id_ex["rs1_val"] = val
         if id_ex.get("rs2") == rd:
@@ -59,16 +53,3 @@ class ForwardingUnit:
     def needs_reg(self, id_ex, rd):
         return (id_ex.get("rs1") == rd or
                 id_ex.get("rs2") == rd)
-
-    def stall_only(self, id_ex, ex_mem, mem_wb):
-        """Without forwarding: stall whenever a needed reg is still in-flight."""
-        if id_ex is None:
-            return 0
-        stalls = 0
-        if ex_mem is not None and ex_mem.get("rd", 0) != 0:
-            if self.needs_reg(id_ex, ex_mem["rd"]):
-                stalls = max(stalls, 1)
-        if mem_wb is not None and mem_wb.get("rd", 0) != 0:
-            if self.needs_reg(id_ex, mem_wb["rd"]):
-                stalls = max(stalls, 1)
-        return stalls
