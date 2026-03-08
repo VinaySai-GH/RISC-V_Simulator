@@ -62,40 +62,40 @@ Comments start with `#`. Labels end with `:`.
 
 ### Date: 08-Mar-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~1.5 hours  
-**Discussion:**
-Tested the full simulator on the bubble sort program. Discovered a bug in the pipelined + forwarding path — the sorted output was wrong (`[2, 1, 8, 3, 5]` instead of `[1, 2, 3, 5, 8]`). Traced it to two issues in `forwarding.py`: (1) `try_forward` was using `alu_result` for LW instructions instead of `mem_data`, forwarding the address instead of the loaded value; (2) EX-EX and MEM-EX forwarding priority was reversed, so a stale register value from a previous loop iteration could override a fresh reset. Both were fixed and the simulator was verified to work correctly across all modes (pipeline+fwd, pipeline no-fwd, no-pipeline). Also manually tested with simple programs. Cleaned up the repo — removed tracked `__pycache__` files, fixed misnamed `__init__py` files, and added `.gitignore`.
+**Duration:** ~1.5 hours
+
+Spent most of the session running the simulator on bubble sort and debugging. The output was completely wrong when pipelining and forwarding were both on — turned out there were two bugs hiding in `forwarding.py`. One was that we were forwarding the memory address instead of the actual loaded value for LW instructions. The other was that EX and MEM forwarding priority was flipped, so an older value from a previous loop iteration was winning over the fresh one. Took a while to trace but fixed both. Tested all modes after — all give `[1, 2, 3, 5, 8]` now. Also ran a few simple hand-written programs to make sure nothing else was broken. Cleaned up the repo before wrapping up — got rid of pycache files that somehow got committed, fixed some `__init__` files that were missing the dot, added a `.gitignore` so it doesn't happen again.
 
 ---
 
 ### Date: 07-Mar-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~20 minutes  
-**Discussion:**
-Reviewed hazard detection logic and overall simulator flow. Checked that stall counting was working correctly. Resolved issues with instruction latency not being correctly applied from `config.json`. Verified that the no-forwarding path correctly inserts stalls for RAW hazards and control hazards. Discussed the `run_pipelined_no_forwarding` approach and confirmed the hazard log was being populated in that path.
+**Duration:** ~20 minutes
+
+Went through the hazard detection and pipeline code together. Stall counts looked off at first — figured out that the latency values from `config.json` weren't being used properly. Fixed that. Also checked that the no-forwarding path was actually logging hazards (it wasn't before — added that). Everything seemed to be working fine after these fixes.
 
 ---
 
 ### Date: 03-Mar-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~15 minutes  
-**Discussion:**
-Maneesh took on the remaining simulator work — pipeline stages, forwarding unit, and the pipeline controller. Vinay assisted where needed. Discussed how to structure the 5-stage pipeline loop and how branch resolution (BNE, JAL) should interact with pipeline flushing. Agreed to use a single-pass loop where each stage is modelled as a Python variable (IF_ID, ID_EX, EX_MEM, MEM_WB).
+**Duration:** ~15 minutes
+
+Maneesh took over the simulator side — pipeline stages, forwarding unit, and the main pipeline loop. Vinay helped out here and there but Maneesh did most of the heavy lifting on this part. Talked about how to handle branches in the pipeline (flushing IF_ID and ID_EX on a taken BNE/JAL) and agreed on using simple Python variables for the pipeline registers (IF_ID, ID_EX, EX_MEM, MEM_WB).
 
 ---
 
 ### Date: 02-Mar-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~15 minutes  
-**Discussion:**
-Vinay completed the assembler (`utils/assembler.py`) and instruction decoder (`core/decoder.py`). The assembler handles label resolution, comment stripping, and multi-format operand parsing. The decoder supports R, I, S, B, and J type instructions. Discussed what still remained — pipeline stages, ALU, register file, memory, forwarding — and divided remaining work for the next session.
+**Duration:** ~15 minutes
+
+Vinay finished the assembler and decoder. The assembler strips comments, resolves labels, and parses all the operand formats. The decoder breaks each instruction into its fields depending on type (R, I, S, B, J). Discussed what was left to do — ALU, register file, memory, full pipeline — and figured out who'd do what next.
 
 ---
 
 ### Date: 24-Feb-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~10 minutes  
-**Discussion:**
-Kickoff meeting. Decided on the overall file and class structure for the simulator. Created the folder layout: `core/` (ALU, decoder, memory, registers), `simulator/` (pipeline, stages, forwarding), `utils/` (assembler, config loader). Agreed to use a JSON config file for pipeline/forwarding flags and instruction latencies. Decided on Python as the implementation language.
+**Duration:** ~10 minutes
+
+First meeting. Decided on the basic structure — split things into `core/`, `simulator/`, and `utils/` folders. Agreed to use a JSON config file so latencies and flags like forwarding/pipeline aren't hardcoded. Picked Python since it's easier to prototype in. Nothing was built yet, just planning.
 
 ---
