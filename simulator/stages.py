@@ -5,7 +5,7 @@ decoder = Decoder()
 alu     = ALU()
 
 def fetch(instructions, pc):
-    if pc >= len(instructions):
+    if pc < 0 or pc >= len(instructions):
         return None
     return instructions[pc]
 

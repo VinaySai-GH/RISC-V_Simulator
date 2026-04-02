@@ -53,9 +53,11 @@ class Pipeline:
             after_mem = memory_access(executed, self.memory)
             writeback(after_mem, self.registers)
             next_pc   = self.handle_pc(after_mem)
-            self.pc   = next_pc if next_pc != self.pc else self.pc + 1
-            op_latency            = self.get_latency(after_mem["op"]) if after_mem else 1
-            self.cycles          += 4 + op_latency
+            if next_pc is not None:
+                self.pc = next_pc
+            else:
+                self.pc += 1
+            self.cycles          += 5
             self.instr_completed += 1
             count += 1
 
@@ -80,10 +82,10 @@ class Pipeline:
                 self.instr_completed += 1
 
             # MEMORY
-            MEM_WB = memory_access(EX_MEM, self.memory)
+            MEM_WB = memory_access(EX_MEM.copy(), self.memory) if EX_MEM is not None else None
 
             # EXECUTE
-            EX_MEM = execute(ID_EX)
+            EX_MEM = execute(ID_EX.copy()) if ID_EX is not None else None
 
             # latency stalls
             if EX_MEM is not None:
@@ -104,7 +106,7 @@ class Pipeline:
                     ID_EX = self.decoder.fill_values(
                         ID_EX, self.registers, self.labels)
                     if ID_EX["op"] == "JAL":
-                        ID_EX["pc_plus_4"] = (self.pc + 1) * 4
+                        ID_EX["pc_plus_4"] = self.pc * 4
             else:
                 ID_EX = None
 
@@ -129,22 +131,23 @@ class Pipeline:
             if EX_MEM is not None:
                 if EX_MEM["op"] == "BNE" and EX_MEM["alu_result"] == 1:
                     target = EX_MEM["target_pc"]
-                    if target != self.pc:
-                        self.pc  = target
-                        IF_ID    = None
-                        ID_EX    = None
-                        self.stalls += 2
-                        self.cycles += 2
-                        self.hazard_log.append(
-                            f"CONTROL HAZARD: BNE taken -> "
-                            f"flushed 2 instructions, "
-                            f"jumped to line {target}"
-                        )
+                    self.pc = target
+                    IF_ID   = None
+                    ID_EX   = None
+                    self.stalls += 2
+                    self.cycles += 2
+                    self.hazard_log.append(
+                        f"CONTROL HAZARD: BNE taken -> "
+                        f"flushed 2 instructions, "
+                        f"jumped to line {target}"
+                    )
                 elif EX_MEM["op"] == "JAL":
                     target = EX_MEM["target_pc"]
-                    if target >= len(self.instructions) - 1:
+                    if target >= len(self.instructions):
                         self.pc = len(self.instructions)
-                    elif target != self.pc:
+                        IF_ID = None
+                        ID_EX = None
+                    else:
                         self.pc  = target
                         IF_ID    = None
                         ID_EX    = None
@@ -167,10 +170,14 @@ class Pipeline:
         """
         No forwarding mode — execute correctly like simple mode
         but count stalls and hazards for pipeline overhead.
+        Without forwarding, results are only available after WB, so:
+          - Distance-1 hazard (immediately previous instr) -> 2 stalls
+          - Distance-2 hazard (two instructions back)      -> 1 stall
         """
         count = 0
         max_instructions = 10000
-        prev_decoded = None  # track previous instruction for hazard detection
+        prev_1 = None  # immediately previous instruction
+        prev_2 = None  # two instructions back
 
         while self.pc < len(self.instructions) and count < max_instructions:
             raw = fetch(self.instructions, self.pc)
@@ -183,24 +190,22 @@ class Pipeline:
             if decoded["op"] == "JAL":
                 decoded["pc_plus_4"] = (self.pc + 1) * 4
 
-            # detect hazards vs previous instruction
-            if prev_decoded is not None:
-                hazards = self.detect_hazards_no_fwd(decoded, prev_decoded)
+            # detect hazards vs previous 2 instructions
+            # check dist-1 first (bigger stall)
+            if prev_1 is not None:
+                hazards = self.detect_hazards_no_fwd(decoded, prev_1, distance=1)
                 for h in hazards:
                     self.hazard_log.append(h)
-                    self.stalls += 3
-                    self.cycles += 3
+                    self.stalls += 2
+                    self.cycles += 2
 
-            # latency stall for LW
-            latency = self.get_latency(decoded["op"])
-            if latency > 1:
-                extra = latency - 1
-                self.stalls += extra
-                self.cycles += extra
-                self.hazard_log.append(
-                    f"LATENCY STALL: {decoded['op']} "
-                    f"latency={latency} -> {extra} extra stall(s)"
-                )
+            # check dist-2 (only if dist-1 didn't already cover that register)
+            if prev_2 is not None:
+                hazards = self.detect_hazards_no_fwd(decoded, prev_2, distance=2)
+                for h in hazards:
+                    self.hazard_log.append(h)
+                    self.stalls += 1
+                    self.cycles += 1
 
             executed  = execute(decoded)
             after_mem = memory_access(executed, self.memory)
@@ -209,48 +214,54 @@ class Pipeline:
             next_pc = self.handle_pc(after_mem)
 
             # control hazard
-            if after_mem["op"] in ("BNE", "JAL") and next_pc != self.pc + 1:
+            if after_mem["op"] in ("BNE", "JAL") and next_pc is not None:
                 self.stalls += 2
                 self.cycles += 2
                 self.hazard_log.append(
                     f"CONTROL HAZARD: {after_mem['op']} taken -> "
                     f"flushed 2 instructions, jumped to line {next_pc}"
                 )
+                # pipeline is flushed after branch — reset history
+                prev_1 = None
+                prev_2 = None
+                self.pc = next_pc
+            else:
+                prev_2 = prev_1
+                prev_1 = after_mem
+                self.pc += 1
 
-            prev_decoded = after_mem
-            self.pc   = next_pc if next_pc != self.pc else self.pc + 1
             self.cycles          += 1
             self.instr_completed += 1
             count += 1
 
-    def detect_hazards_no_fwd(self, current, prev):
-        """Detect RAW hazards between consecutive instructions"""
+    def detect_hazards_no_fwd(self, current, prev, distance=1):
+        """Detect RAW hazards between current and a previous instruction"""
         hazards = []
         if "rd" not in prev or prev["rd"] == 0:
             return hazards
         rd = prev["rd"]
         if current.get("rs1") == rd:
             hazards.append(
-                f"DATA HAZARD: STALL(no-fwd) x{rd} "
+                f"DATA HAZARD: STALL(no-fwd, dist={distance}) x{rd} "
                 f"from {prev['op']} -> {current['op']}"
             )
         if current.get("rs2") == rd:
             hazards.append(
-                f"DATA HAZARD: STALL(no-fwd) x{rd} "
+                f"DATA HAZARD: STALL(no-fwd, dist={distance}) x{rd} "
                 f"from {prev['op']} -> {current['op']} (rs2)"
             )
         return hazards
 
     def handle_pc(self, decoded):
         if decoded is None:
-            return self.pc
+            return None
         if decoded["op"] == "BNE" and decoded["alu_result"] == 1:
             return decoded["target_pc"]
         if decoded["op"] == "JAL":
-            if decoded["target_pc"] >= len(self.instructions) - 1:
+            if decoded["target_pc"] >= len(self.instructions):
                 return len(self.instructions)
             return decoded["target_pc"]
-        return self.pc
+        return None
 
     def print_stats(self):
         ipc = self.instr_completed / self.cycles if self.cycles > 0 else 0

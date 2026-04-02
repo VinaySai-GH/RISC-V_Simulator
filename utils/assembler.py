@@ -34,4 +34,4 @@ class Assembler:
         operands = []
         if len(parts) > 1:
             operands = [x.strip() for x in parts[1].split(",")]
-        return {"op": op, "operands": operands}
+        return {"op": op, "operands": operands} 
