@@ -2,15 +2,31 @@
     "pipeline": true,
     "forwarding": true,
     "latencies": {
-        "ADD":  1,
-        "SUB":  1,
+        "ADD": 1,
+        "SUB": 1,
         "ADDI": 1,
-        "SLT":  1,
-        "AND":  1,
-        "OR":   1,
-        "LW":   2,
-        "SW":   1,
-        "BNE":  1,
-        "JAL":  1
+        "SLT": 1,
+        "AND": 1,
+        "OR": 1,
+        "LW": 2,
+        "SW": 1,
+        "BNE": 1,
+        "JAL": 1
+    },
+    "cache": {
+        "replacement_policy": "LRU",
+        "memory_latency": 100,
+        "L1": {
+            "size": 16384,
+            "block_size": 64,
+            "associativity": 4,
+            "latency": 2
+        },
+        "L2": {
+            "size": 65536,
+            "block_size": 64,
+            "associativity": 8,
+            "latency": 10
+        }
     }
 }

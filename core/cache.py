@@ -22,6 +22,7 @@ class CacheLevel:
         self.sets=[[CacheLine() for _ in range(associativity)] for _ in range(self.num_sets)]
         self.hits=0
         self.misses=0
+        
     def _get_parts(self,address):
         """Standard RISC-V bit-splitting"""
         index=(address >> self.offset_bits)&(self.num_sets-1)
