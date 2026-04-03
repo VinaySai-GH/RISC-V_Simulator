@@ -3,6 +3,7 @@ from core.memory import Memory
 from core.decoder import Decoder
 from simulator.stages import fetch, decode, execute, memory_access, writeback
 from simulator.forwarding import ForwardingUnit
+from simulator.cache_controller import CacheController
 
 class Pipeline:
     def __init__(self, instructions, labels, use_pipeline, use_forwarding, config):
@@ -82,8 +83,11 @@ class Pipeline:
                 self.instr_completed += 1
 
             # MEMORY
-            MEM_WB = memory_access(EX_MEM.copy(), self.memory) if EX_MEM is not None else None
-
+            MEM_WB,m_lat=memory_access(EX_MEM,self.memory,self.cache_controller,self.cycles) if EX_MEM is not None else None
+            if m_lat>1:
+                penalty=m_lat-1
+                self.stalls+=penalty
+                self.cycles+=penalty
             # EXECUTE
             EX_MEM = execute(ID_EX.copy()) if ID_EX is not None else None
 
@@ -122,10 +126,16 @@ class Pipeline:
                     self.pc -= 1
 
             # FETCH
-            raw   = fetch(self.instructions, self.pc)
+            raw,f_lat = fetch(self.instructions, self.pc,self.cache_controller,self.cycles)
+
             IF_ID = raw
             if raw is not None:
                 self.pc += 1
+                IF_ID = raw
+            if f_lat > 1:
+                penalty = f_lat - 1
+                self.stalls += penalty
+                self.cycles += penalty
 
             # BRANCH RESOLUTION
             if EX_MEM is not None:
@@ -265,6 +275,12 @@ class Pipeline:
 
     def print_stats(self):
         ipc = self.instr_completed / self.cycles if self.cycles > 0 else 0
+        print(f"Final IPC: {ipc:.4f}")
+        evel
+        for cache in [self.cache_controller.l1i, self.cache_controller.l1d, self.cache_controller.l2]:
+                total = cache.hits + cache.misses
+                rate = (cache.misses / total) * 100 if total > 0 else 0
+                print(f"{cache.name} Miss Rate: {rate:.2f}%")
         print("\n========== RESULTS ==========")
         print(f"Instructions completed : {self.instr_completed}")
         print(f"Total cycles           : {self.cycles}")
