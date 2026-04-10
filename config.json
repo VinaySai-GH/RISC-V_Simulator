@@ -8,7 +8,7 @@
         "SLT": 1,
         "AND": 1,
         "OR": 1,
-        "LW": 2,
+        "LW": 1,
         "SW": 1,
         "BNE": 1,
         "JAL": 1
@@ -16,7 +16,13 @@
     "cache": {
         "replacement_policy": "LRU",
         "memory_latency": 100,
-        "L1": {
+        "L1I": {
+            "size": 16384,
+            "block_size": 64,
+            "associativity": 4,
+            "latency": 2
+        },
+        "L1D": {
             "size": 16384,
             "block_size": 64,
             "associativity": 4,

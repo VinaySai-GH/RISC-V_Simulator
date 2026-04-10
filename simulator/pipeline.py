@@ -17,12 +17,14 @@ class Pipeline:
         self.memory          = Memory()
         self.decoder         = Decoder()
         self.forwarding_unit = ForwardingUnit()
+        self.cache_controller = CacheController(config, self.memory)
 
         self.memory.load_array(0, [5, 3, 8, 1, 2])
 
         self.pc              = 0
         self.cycles          = 0
         self.stalls          = 0
+        self.cache_stalls    = 0
         self.instr_completed = 0
         self.hazard_log      = []
 
@@ -42,16 +44,32 @@ class Pipeline:
         count = 0
         max_instructions = 10000
         while self.pc < len(self.instructions) and count < max_instructions:
-            raw = fetch(self.instructions, self.pc)
+            current_pc = self.pc
+            raw, fetch_latency = fetch(
+                self.instructions, self.pc, self.cache_controller, self.cycles
+            )
             if raw is None:
                 break
+            if fetch_latency > 1:
+                extra = fetch_latency - 1
+                self.stalls += extra
+                self.cache_stalls += extra
+                self.cycles += extra
             decoded   = decode(raw)
             decoded   = self.decoder.fill_values(
                 decoded, self.registers, self.labels)
+            decoded["pc_index"] = current_pc
             if decoded["op"] == "JAL":
-                decoded["pc_plus_4"] = (self.pc + 1) * 4
+                decoded["pc_plus_4"] = (current_pc + 1) * 4
             executed  = execute(decoded)
-            after_mem = memory_access(executed, self.memory)
+            after_mem, mem_latency = memory_access(
+                executed, self.memory, self.cache_controller, self.cycles
+            )
+            if mem_latency > 1:
+                extra = mem_latency - 1
+                self.stalls += extra
+                self.cache_stalls += extra
+                self.cycles += extra
             writeback(after_mem, self.registers)
             next_pc   = self.handle_pc(after_mem)
             if next_pc is not None:
@@ -83,11 +101,19 @@ class Pipeline:
                 self.instr_completed += 1
 
             # MEMORY
-            MEM_WB,m_lat=memory_access(EX_MEM,self.memory,self.cache_controller,self.cycles) if EX_MEM is not None else None
-            if m_lat>1:
-                penalty=m_lat-1
-                self.stalls+=penalty
-                self.cycles+=penalty
+            if EX_MEM is not None:
+                mem_input = EX_MEM.copy()
+                MEM_WB, m_lat = memory_access(
+                    mem_input, self.memory, self.cache_controller, self.cycles
+                )
+            else:
+                MEM_WB, m_lat = None, 0
+
+            if m_lat > 1:
+                penalty = m_lat - 1
+                self.stalls += penalty
+                self.cache_stalls += penalty
+                self.cycles += penalty
             # EXECUTE
             EX_MEM = execute(ID_EX.copy()) if ID_EX is not None else None
 
@@ -105,12 +131,13 @@ class Pipeline:
 
             # DECODE
             if IF_ID is not None:
-                ID_EX = decode(IF_ID)
+                ID_EX = decode(IF_ID["raw"])
                 if ID_EX is not None:
                     ID_EX = self.decoder.fill_values(
                         ID_EX, self.registers, self.labels)
+                    ID_EX["pc_index"] = IF_ID["pc"]
                     if ID_EX["op"] == "JAL":
-                        ID_EX["pc_plus_4"] = self.pc * 4
+                        ID_EX["pc_plus_4"] = (IF_ID["pc"] + 1) * 4
             else:
                 ID_EX = None
 
@@ -126,15 +153,18 @@ class Pipeline:
                     self.pc -= 1
 
             # FETCH
-            raw,f_lat = fetch(self.instructions, self.pc,self.cache_controller,self.cycles)
+            fetch_pc = self.pc
+            raw, f_lat = fetch(
+                self.instructions, self.pc, self.cache_controller, self.cycles
+            )
 
-            IF_ID = raw
+            IF_ID = {"raw": raw, "pc": fetch_pc} if raw is not None else None
             if raw is not None:
                 self.pc += 1
-                IF_ID = raw
             if f_lat > 1:
                 penalty = f_lat - 1
                 self.stalls += penalty
+                self.cache_stalls += penalty
                 self.cycles += penalty
 
             # BRANCH RESOLUTION
@@ -153,7 +183,11 @@ class Pipeline:
                     )
                 elif EX_MEM["op"] == "JAL":
                     target = EX_MEM["target_pc"]
-                    if target >= len(self.instructions):
+                    if target == EX_MEM.get("pc_index"):
+                        self.pc = len(self.instructions)
+                        IF_ID = None
+                        ID_EX = None
+                    elif target >= len(self.instructions):
                         self.pc = len(self.instructions)
                         IF_ID = None
                         ID_EX = None
@@ -190,35 +224,51 @@ class Pipeline:
         prev_2 = None  # two instructions back
 
         while self.pc < len(self.instructions) and count < max_instructions:
-            raw = fetch(self.instructions, self.pc)
+            current_pc = self.pc
+            raw, fetch_latency = fetch(
+                self.instructions, self.pc, self.cache_controller, self.cycles
+            )
             if raw is None:
                 break
+            if fetch_latency > 1:
+                extra = fetch_latency - 1
+                self.stalls += extra
+                self.cache_stalls += extra
+                self.cycles += extra
 
             decoded = decode(raw)
             decoded = self.decoder.fill_values(
                 decoded, self.registers, self.labels)
+            decoded["pc_index"] = current_pc
             if decoded["op"] == "JAL":
-                decoded["pc_plus_4"] = (self.pc + 1) * 4
+                decoded["pc_plus_4"] = (current_pc + 1) * 4
 
             # detect hazards vs previous 2 instructions
             # check dist-1 first (bigger stall)
             if prev_1 is not None:
                 hazards = self.detect_hazards_no_fwd(decoded, prev_1, distance=1)
-                for h in hazards:
-                    self.hazard_log.append(h)
+                if hazards:
+                    self.hazard_log.extend(hazards)
                     self.stalls += 2
                     self.cycles += 2
 
             # check dist-2 (only if dist-1 didn't already cover that register)
             if prev_2 is not None:
                 hazards = self.detect_hazards_no_fwd(decoded, prev_2, distance=2)
-                for h in hazards:
-                    self.hazard_log.append(h)
+                if hazards:
+                    self.hazard_log.extend(hazards)
                     self.stalls += 1
                     self.cycles += 1
 
             executed  = execute(decoded)
-            after_mem = memory_access(executed, self.memory)
+            after_mem, mem_latency = memory_access(
+                executed, self.memory, self.cache_controller, self.cycles
+            )
+            if mem_latency > 1:
+                extra = mem_latency - 1
+                self.stalls += extra
+                self.cache_stalls += extra
+                self.cycles += extra
             writeback(after_mem, self.registers)
 
             next_pc = self.handle_pc(after_mem)
@@ -268,24 +318,37 @@ class Pipeline:
         if decoded["op"] == "BNE" and decoded["alu_result"] == 1:
             return decoded["target_pc"]
         if decoded["op"] == "JAL":
+            if decoded.get("target_pc") == decoded.get("pc_index"):
+                return len(self.instructions)
             if decoded["target_pc"] >= len(self.instructions):
                 return len(self.instructions)
             return decoded["target_pc"]
         return None
 
     def print_stats(self):
+        self.cache_controller.flush()
         ipc = self.instr_completed / self.cycles if self.cycles > 0 else 0
-        print(f"Final IPC: {ipc:.4f}")
-        for cache in [self.cache_controller.l1i, self.cache_controller.l1d, self.cache_controller.l2]:
-            total = cache.hits + cache.misses
-            rate = (cache.misses / total) * 100 if total > 0 else 0
-            print(f"{cache.name} Miss Rate: {rate:.2f}%")
+        cache_stats = self.cache_controller.get_stats()
+
         print("\n========== RESULTS ==========")
         print(f"Instructions completed : {self.instr_completed}")
         print(f"Total cycles           : {self.cycles}")
-        print(f"Stalls                 : {self.stalls}")
-        print(f"IPC                    : {ipc:.2f}")
+        print(f"Total stalls           : {self.stalls}")
+        print(f"Cache stalls           : {self.cache_stalls}")
+        print(f"IPC                    : {ipc:.4f}")
         print("=============================")
+
+        print("\n--- Cache Performance ---")
+        for cache_name, data in cache_stats.items():
+            hits = data["hits"]
+            misses = data["misses"]
+            accesses = hits + misses
+            miss_rate = (misses / accesses) * 100 if accesses > 0 else 0
+
+            print(f"{cache_name} Hits      : {hits}")
+            print(f"{cache_name} Misses    : {misses}")
+            print(f"{cache_name} Miss Rate : {miss_rate:.2f}%")
+
         print("\n--- Hazards Detected ---")
         if self.hazard_log:
             for h in self.hazard_log:
