@@ -27,7 +27,7 @@ class Assembler:
             instructions.append(self.parse_line(line))
 
         return instructions, labels
-
+   
     def parse_line(self, line):
         parts    = line.split(None, 1)
         op       = parts[0].upper().strip()

@@ -276,11 +276,10 @@ class Pipeline:
     def print_stats(self):
         ipc = self.instr_completed / self.cycles if self.cycles > 0 else 0
         print(f"Final IPC: {ipc:.4f}")
-        evel
         for cache in [self.cache_controller.l1i, self.cache_controller.l1d, self.cache_controller.l2]:
-                total = cache.hits + cache.misses
-                rate = (cache.misses / total) * 100 if total > 0 else 0
-                print(f"{cache.name} Miss Rate: {rate:.2f}%")
+            total = cache.hits + cache.misses
+            rate = (cache.misses / total) * 100 if total > 0 else 0
+            print(f"{cache.name} Miss Rate: {rate:.2f}%")
         print("\n========== RESULTS ==========")
         print(f"Instructions completed : {self.instr_completed}")
         print(f"Total cycles           : {self.cycles}")

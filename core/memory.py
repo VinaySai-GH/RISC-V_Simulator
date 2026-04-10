@@ -18,7 +18,7 @@ class Memory:
         self.memory[address + 1] = (value >> 8)  & 0xFF
         self.memory[address + 2] = (value >> 16) & 0xFF
         self.memory[address + 3] = (value >> 24) & 0xFF
-
+        
     def load_array(self, base, values):
         for i, val in enumerate(values):
             self.store(base + i * 4, val)

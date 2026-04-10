@@ -4,7 +4,7 @@ import random
 
 class CacheLine:
     def __init__(self):
-        self.valid=false
+        self.valid= False
         self.tag=None
         self.last_used=0 # timestamp for lru logic
 
