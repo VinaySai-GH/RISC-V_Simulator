@@ -60,6 +60,38 @@ Comments start with `#`. Labels end with `:`.
 
 ---
 
+### Date: 10-Apr-2026
+**Members:** Vinay Sai, Maneesh  
+**Duration:** ~2 hours  
+
+Final push today. We finally merged Maneesh’s hardware-accurate cache model into the main pipeline. It wasn't as smooth as we hoped—we found a handful of bugs during the merge, mostly weird edge cases in the forwarding unit and some stall logic that got trippy with the new cache latencies. We ended up building a full test suite in `tests/` just to be 100% sure the core logic is solid. Spent the rest of the time cleaning up the repo and squashing all those messy merge commits so it looks decent on GitHub. Everything's finally working across all modes. 
+
+---
+
+### Date: 09-Apr-2026
+**Members:** Maneesh  
+**Duration:** ~20 minutes  
+
+Maneesh finished the heavy lifting on the cache side today. He got the L1 (I and D) and L2 levels up and running with the full Write-Back logic we talked about. All the data-access paths are now talking to the memory object correctly. He hit his deadline, so we're good to go for the final integration.
+
+---
+
+### Date: 03-Apr-2026
+**Members:** Vinay Sai, Maneesh  
+**Duration:** ~20 minutes  
+
+Quick design session for the cache. We decided to go with LRU and Random as our replacement policies—should be interesting to see which one performs better. After we talked through some memory stage changes I’d already started, I handed over the integration and data-access enablement to Maneesh. He's taking the lead on the multi-level hierarchy now while I keep an eye on the pipeline stability.
+
+---
+
+### Date: 02-Apr-2026
+**Members:** Vinay Sai, Maneesh  
+**Duration:** ~40 minutes  
+
+Starting Phase 2. While we were looking at the cache requirements, we actually spotted some subtle bugs in our Phase 1 pipeline, mostly around how we were prioritizing forwarding. Instead of just patching them, we decided to overhaul the logic as part of the Phase 2 transition to keep things clean. Sketched out a rough plan for the L1/L2 split.
+
+---
+
 ### Date: 08-Mar-2026
 **Members:** Vinay Sai, Maneesh  
 **Duration:** ~1.5 hours
@@ -72,7 +104,7 @@ Spent most of the session running the simulator on bubble sort and debugging. Th
 **Members:** Vinay Sai, Maneesh  
 **Duration:** ~20 minutes
 
-Went through the hazard detection and pipeline code together. Stall counts looked off at first — figured out that the latency values from `config.json` weren't being used properly. Fixed that. Also checked that the no-forwarding path was actually logging hazards (it wasn't before — added that). Everything seemed to be working fine after these fixes.
+Went through the hazard detection and pipeline code together. Stall counts looked off at first — figured out that the latency values from `config.json` weren't being used properly. Fixed that. Also checked that the no-forwarding path was already logging hazards (it wasn't before — added that). Everything seemed to be working fine after these fixes.
 
 ---
 
@@ -80,7 +112,7 @@ Went through the hazard detection and pipeline code together. Stall counts looke
 **Members:** Vinay Sai, Maneesh  
 **Duration:** ~15 minutes
 
-Maneesh took over the simulator side  forwarding unit, and the main pipeline loop. Vinay did the stages part   but Maneesh did most of the heavy lifting on this part. Talked about how to handle branches in the pipeline (flushing IF_ID and ID_EX on a taken BNE/JAL) and agreed on using simple Python variables for the pipeline registers (IF_ID, ID_EX, EX_MEM, MEM_WB).
+Maneesh took over the simulator side forwarding unit, and the main pipeline loop. Vinay did the stages part but Maneesh did most of the heavy lifting on this part. Talked about how to handle branches in the pipeline (flushing IF_ID and ID_EX on a taken BNE/JAL) and agreed on using simple Python variables for the pipeline registers (IF_ID, ID_EX, EX_MEM, MEM_WB).
 
 ---
 
@@ -97,5 +129,3 @@ Vinay finished the assembler and decoder. The assembler strips comments, resolve
 **Duration:** ~10 minutes
 
 First meeting. Decided on the basic structure — split things into `core/`, `simulator/`, and `utils/` folders. Agreed to use a JSON config file so latencies and flags like forwarding/pipeline aren't hardcoded. Picked Python since it's easier to prototype in. Nothing was built yet, just planning.
-
----
