@@ -42,9 +42,10 @@ class CacheLevel:
         self.misses = 0
 
     def _get_parts(self, address):
+        address = int(address) # Safety cast
         index = (address >> self.offset_bits) & (self.num_sets - 1)
         tag = address >> (self.offset_bits + self.index_bits)
-        return tag, index
+        return int(tag), int(index)
 
     def _block_base(self, address):
         return address - (address % self.block_size)

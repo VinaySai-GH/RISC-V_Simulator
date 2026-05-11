@@ -22,7 +22,8 @@ class CacheController:
     def store_word(self, address, value, cycle):
         latency = self._access_data_hierarchy(address, cycle)
         self.l1d.write_word(address, value, cycle)
-        self.l2.write_word(address, value, cycle)
+        if self.l2.size > 64:
+           self.l2.write_word(address, value, cycle)
         return latency
 
     def _access_hierarchy(self, address, l1_cache, cycle):

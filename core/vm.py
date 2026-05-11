@@ -137,7 +137,7 @@ class VirtualMemorySystem:
                 frame["last_used"] = current_cycle
                 break
 
-        self.stats["translation_penalty"] += latency
-        physical_address = (pfn * self.page_size) + offset
+        self.stats["translation_penalty"] += int(latency)
+        physical_address = int((pfn * self.page_size) + offset)
         
-        return physical_address, latency
+        return physical_address, int(latency)

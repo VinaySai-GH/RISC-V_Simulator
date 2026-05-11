@@ -9,7 +9,7 @@ class TraceReplayer:
         self.trace_file = trace_file
         self.config = config
         
-        self.memory = Memory()
+        self.memory = Memory(config.get("memory", {}).get("physical_size_bytes", 4096))
         self.vm = VirtualMemorySystem(config)
         self.cache_controller = CacheController(config, self.memory)
         
