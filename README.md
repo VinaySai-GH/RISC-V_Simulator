@@ -114,7 +114,7 @@ Comments start with `#`. Labels end with `:`.
 
 ### Date: 15-May-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~2 hours  
+**Duration:** ~1 hour 
 
 Wrapped up the Phase 3 side today. The biggest thing was making trace replay line up with the assignment format instead of just treating traces as raw memory events. Loads and stores now use the register field from the trace, and `ADD`/`MUL` update the trace-mode register file as well. We also cleaned up the config split: `config.json` is still the better file for Phase 1 and Phase 2, while `example.ini` now matches the official Phase 3 reporting setup with 64 frames, 16 DTLB entries, a 4 KB direct-mapped L1, and no L2. Ran all 10 traces and put the numbers into `phase3_report.md`.
 
@@ -122,7 +122,7 @@ Wrapped up the Phase 3 side today. The biggest thing was making trace replay lin
 
 ### Date: 12-May-2026
 **Members:** Vinay Sai, Maneesh  
-**Duration:** ~1.5 hours  
+**Duration:** ~1 hour 
 
 Started tying virtual memory into the simulator. We added the DTLB, flat page table, frame allocation, page walks, page faults, and dirty eviction tracking. The first few trace runs were useful because they made it obvious when the config was too small or when the cache path was still assuming an L2 cache. Once the no-L2 path was working, the trace replay mode became much closer to the Phase 3 requirement.
 
