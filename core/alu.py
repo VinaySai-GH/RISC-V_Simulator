@@ -12,6 +12,8 @@ class ALU:
             return a | b
         elif op == "SLT":
             return 1 if a < b else 0
+        elif op == "MUL":
+            return a * b
         elif op == "LW":
             return a + b
         elif op == "SW":

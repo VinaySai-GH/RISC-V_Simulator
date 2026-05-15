@@ -11,7 +11,8 @@
         "LW": 1,
         "SW": 1,
         "BNE": 1,
-        "JAL": 1
+        "JAL": 1,
+        "MUL": 3
     },
     "cache": {
         "replacement_policy": "LRU",
@@ -34,5 +35,17 @@
             "associativity": 8,
             "latency": 10
         }
+    },
+    "memory": {
+        "virtual_size_bytes": 65536,
+        "physical_size_bytes": 16384,
+        "page_size_bytes": 4096
+    },
+    "vm": {
+        "dtlb_entries": 16,
+        "tlb_hit_latency": 1,
+        "page_walk_latency": 10,
+        "page_fault_latency": 50,
+        "replacement_policy": "lru"
     }
 }

@@ -77,11 +77,12 @@ class VirtualMemorySystem:
         latency = 0
         
         # 1. TLB Lookup
-        latency += self.tlb_hit_latency
         pfn = self.dtlb.lookup(vpn, current_cycle)
         
         if pfn is not None:
+            # TLB HIT
             self.stats["tlb_hits"] += 1
+            latency += self.tlb_hit_latency
         else:
             # 2. TLB Miss -> Page Walk
             self.stats["tlb_misses"] += 1
@@ -92,6 +93,11 @@ class VirtualMemorySystem:
             
             if pt_entry and pt_entry["valid"]:
                 pfn = pt_entry["pfn"]
+                # Update allocated_frames LRU tracking for page walk hit
+                for frame in self.allocated_frames:
+                    if frame["pfn"] == pfn:
+                        frame["last_used"] = current_cycle
+                        break
             else:
                 # 3. Page Fault -> Allocate Frame
                 self.stats["page_faults"] += 1
@@ -118,7 +124,7 @@ class VirtualMemorySystem:
                     self.dtlb.invalidate(victim_vpn)
 
                 # Update Page Table for the newly loaded page
-                self.page_table[vpn] = {"pfn": pfn, "valid": True, "dirty": False}
+                self.page_table[vpn] = {"pfn": pfn, "valid": True, "dirty": is_write}
                 self.allocated_frames.append({
                     "pfn": pfn, "vpn": vpn,
                     "last_used": current_cycle, "inserted_at": current_cycle

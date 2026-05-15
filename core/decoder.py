@@ -3,7 +3,7 @@ class Decoder:
         op       = instruction["op"]
         operands = instruction["operands"]
 
-        if op in ("ADD", "SUB", "AND", "OR", "SLT"):
+        if op in ("ADD", "SUB", "AND", "OR", "SLT", "MUL"):
             return {
                 "op"  : op,
                 "type": "R",
@@ -13,12 +13,16 @@ class Decoder:
             }
 
         elif op == "ADDI":
+            # Sign-extend 12-bit immediate to 32-bit
+            offset = int(operands[2])
+            if offset >= 2048:
+                offset -= 4096
             return {
                 "op"    : op,
                 "type"  : "I",
                 "rd"    : self.parse_reg(operands[0]),
                 "rs1"   : self.parse_reg(operands[1]),
-                "offset": int(operands[2]),
+                "offset": offset,
             }
 
         elif op == "LW":
@@ -72,11 +76,23 @@ class Decoder:
         return decoded
 
     def parse_reg(self, reg_str):
-        return int(reg_str.strip().replace("x", ""))
+        reg = reg_str.strip()
+        if not reg.startswith("x"):
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        try:
+            reg_num = int(reg[1:])
+        except ValueError:
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        if reg_num < 0 or reg_num > 31:
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        return reg_num
 
     def parse_mem_operand(self, operands):
         reg1 = self.parse_reg(operands[0])
         offset_str, reg_str = operands[1].replace(")", "").split("(")
         reg2   = self.parse_reg(reg_str)
+        # Sign-extend 12-bit offset to 32-bit (standard RISC-V immediate)
         offset = int(offset_str)
+        if offset >= 2048:  # If bit 11 is set (0x800 = 2048)
+            offset -= 4096   # Convert to negative (two's complement)
         return reg1, offset, reg2

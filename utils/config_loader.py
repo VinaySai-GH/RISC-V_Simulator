@@ -21,7 +21,7 @@ def _load_ini(file_path):
     parser.read(file_path)
         
     config = {
-    "pipeline": parser.getboolean("pipeline", "forwarding_enabled", fallback=True),
+        "pipeline": parser.getboolean("pipeline", "forwarding_enabled", fallback=True),
         "forwarding": parser.getboolean("pipeline", "forwarding_enabled", fallback=True),
         "latencies": {},
         "memory": {},
@@ -31,7 +31,7 @@ def _load_ini(file_path):
             "memory_latency": 100,
             "L1I": {"size": 4096, "block_size": 64, "associativity": 1, "latency": 1},
             "L1D": {"size": 4096, "block_size": 64, "associativity": 1, "latency": 1},
-            "L2": {"size": 64, "block_size": 64, "associativity": 1, "latency": 0} # No L2 for Phase 3
+            "L2": {"size": 65536, "block_size": 64, "associativity": 8, "latency": 10}
         }
     }
       # Fill in the latencies (ADD, MUL, etc.)
@@ -69,6 +69,12 @@ def _load_ini(file_path):
         if "associativity" in c:
             config["cache"]["L1D"]["associativity"] = int(c["associativity"])
             config["cache"]["L1I"]["associativity"] = int(c["associativity"])
+        if "l2_size_bytes" in c:
+            config["cache"]["L2"]["size"] = int(c["l2_size_bytes"])
+        if "l2_latency" in c:
+            config["cache"]["L2"]["latency"] = int(c["l2_latency"])
+        if "l2_associativity" in c:
+            config["cache"]["L2"]["associativity"] = int(c["l2_associativity"])
 
     return config
         

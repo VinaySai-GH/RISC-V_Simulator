@@ -78,7 +78,7 @@ def writeback(decoded, registers):
     if decoded is None:
         return
     op = decoded["op"]
-    if op in ("ADD", "SUB", "ADDI", "AND", "OR", "SLT"):
+    if op in ("ADD", "SUB", "ADDI", "AND", "OR", "SLT", "MUL"):
         registers.write(decoded["rd"], decoded["alu_result"])
     elif op == "LW":
         registers.write(decoded["rd"], decoded["mem_data"])

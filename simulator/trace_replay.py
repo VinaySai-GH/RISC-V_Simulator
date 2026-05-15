@@ -3,6 +3,7 @@ import sys
 from core.vm import VirtualMemorySystem
 from simulator.cache_controller import CacheController
 from core.memory import Memory
+from core.registers import RegisterFile
 
 class TraceReplayer:
     def __init__(self, trace_file, config):
@@ -10,6 +11,7 @@ class TraceReplayer:
         self.config = config
         
         self.memory = Memory(config.get("memory", {}).get("physical_size_bytes", 4096))
+        self.registers = RegisterFile()
         self.vm = VirtualMemorySystem(config)
         self.cache_controller = CacheController(config, self.memory)
         
@@ -19,6 +21,18 @@ class TraceReplayer:
 
     def get_latency(self, op):
         return self.config.get("latencies", {}).get(op.upper(), 1)
+
+    def parse_reg(self, reg_str):
+        reg = reg_str.strip()
+        if not reg.startswith("x"):
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        try:
+            reg_num = int(reg[1:])
+        except ValueError:
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        if reg_num < 0 or reg_num > 31:
+            raise ValueError(f"Invalid register '{reg_str}': expected x0 through x31")
+        return reg_num
 
     def run(self):
         print(f"\n--- Running TRACE REPLAY mode for {self.trace_file} ---\n")
@@ -34,7 +48,22 @@ class TraceReplayer:
                     base_lat = self.get_latency(op)
                     
                     if op in ["L", "S"]:
-                        v_addr = int(parts[1], 16)
+                        if len(parts) < 3:
+                            print(f"ERROR: Missing address in trace line: {line}")
+                            continue
+                        try:
+                            v_addr = int(parts[1], 16)
+                        except ValueError:
+                            print(f"ERROR: Invalid hex address '{parts[1]}' in trace line: {line}")
+                            continue
+                        if v_addr < 0 or v_addr > 0xFFFFFFFF:
+                            print(f"ERROR: Virtual address out of range in trace line: {line}")
+                            continue
+                        try:
+                            reg = self.parse_reg(parts[2])
+                        except ValueError as exc:
+                            print(f"ERROR: {exc} in trace line: {line}")
+                            continue
                         is_write = (op == "S")
                         
                         # 1. Virtual Memory Translation (VA -> PA)
@@ -42,13 +71,32 @@ class TraceReplayer:
                         
                         # 2. PIPT Cache Access using Physical Address
                         if op == "L":
-                            _, cache_latency = self.cache_controller.load_word(p_addr, self.cycles)
+                            value, cache_latency = self.cache_controller.load_word(p_addr, self.cycles)
+                            self.registers.write(reg, value)
                         else:
-                            cache_latency = self.cache_controller.store_word(p_addr, 0, self.cycles)
+                            cache_latency = self.cache_controller.store_word(
+                                p_addr, self.registers.read(reg), self.cycles
+                            )
                         
                         total_latency = vm_latency + cache_latency 
                         
                     elif op in ["ADD", "MUL"]:
+                        if len(parts) < 4:
+                            print(f"ERROR: Missing register operand in trace line: {line}")
+                            continue
+                        try:
+                            rd = self.parse_reg(parts[1])
+                            rs1 = self.parse_reg(parts[2])
+                            rs2 = self.parse_reg(parts[3])
+                        except ValueError as exc:
+                            print(f"ERROR: {exc} in trace line: {line}")
+                            continue
+                        lhs = self.registers.read(rs1)
+                        rhs = self.registers.read(rs2)
+                        if op == "ADD":
+                            self.registers.write(rd, lhs + rhs)
+                        else:
+                            self.registers.write(rd, lhs * rhs)
                         total_latency = base_lat
                     else:
                         continue

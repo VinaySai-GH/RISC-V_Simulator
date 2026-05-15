@@ -2,15 +2,64 @@
 
 A RISC-V pipeline simulator inspired by Ripes, built as part of the Computer Organization & Architecture course (2026).
 
+This README now covers all three stages of the project: Phase 1 pipeline simulation, Phase 2 cache simulation, and Phase 3 virtual memory with trace replay.
+
 ## Features
 
-- **Supported instructions:** ADD, SUB, ADDI, SLT, LW, SW, BNE, JAL, AND, OR
+- **Current scope:** Phase 1 pipeline, Phase 2 cache hierarchy, and Phase 3 virtual memory/trace replay
+- **Extra instruction support:** MUL is included in addition to the original arithmetic and memory subset
+- **Pipeline stages:** Fetch, Decode, Execute, Memory, and Writeback
 - **5-stage pipeline:** Fetch → Decode → Execute → Memory → Writeback
 - **Data forwarding** (enable/disable via flag or config)
 - **Hazard detection:** RAW data hazards, load-use hazards, control hazards
 - **Variable instruction latencies** via `config.json`
 - **Output:** stall count, IPC, final register state, sorted array
 - **Bubble sort** supported and tested
+
+## Phase 1: Pipeline Simulator
+
+Phase 1 is the base simulator. It reads assembly from a file, decodes labels and operands, and runs the program either as a simple simulator or as a 5-stage pipeline. The pipeline stages are fetch, decode/register fetch, execute, memory, and writeback.
+
+The Phase 1 implementation supports `ADD`, `SUB`, `ADDI`, `SLT`, `LW`, `SW`, `BNE`, `JAL`, `AND`, `OR`, and `MUL`. Forwarding can be switched on or off, and the simulator logs RAW hazards, load-use stalls, and control hazards from taken branches or jumps. Instruction latencies are read from the config file, so values like `ADD = 1` and `MUL = 3` are not hardcoded into the assembly program.
+
+The sample `program.asm` runs bubble sort. It is the main sanity test for the pipeline, and the expected final array is:
+
+```text
+[1, 2, 3, 5, 8]
+```
+
+## Phase 2: Cache Extension
+
+Phase 2 extends the same simulator with cache support. We did not start again from scratch; the cache was added on top of the existing pipeline, so instruction fetches and data memory operations now go through the cache hierarchy.
+
+The cache model has two levels:
+
+- `L1I`: first-level instruction cache
+- `L1D`: first-level data cache
+- `L2`: unified second-level cache
+
+Instruction fetch is treated as a memory access. If the instruction address hits in `L1I`, fetch completes with the L1 latency. If it misses, the request goes to `L2` and then main memory if needed. Similarly, `LW` and `SW` use `L1D`, then `L2`, then main memory. Because of this, fetch, load, and store can all introduce variable stalls.
+
+The cache parameters are read from `config.json`: cache size, block size, associativity, cache latency, replacement policy, and main memory latency. The simulator supports `LRU` and `FIFO` replacement policies, with a random fallback available for experiments. At the end of execution it prints cache hits, misses, miss rate, total stalls, cache stalls, and IPC.
+
+For Phase 2 demonstrations, use `config.json`, because it contains the full `L1I`/`L1D`/`L2` setup.
+
+## Phase 3: Virtual Memory and Trace Replay
+
+Phase 3 adds trace replay and virtual memory. In trace mode, the simulator reads the trace line by line and executes the given operations in order. The trace format supports:
+
+```text
+L 0x1000 x5
+S 0x1004 x6
+ADD x7 x5 x6
+MUL x8 x7 x9
+```
+
+For `L`, the register is the destination. For `S`, the register is the source. For `ADD` and `MUL`, the trace gives destination, source 1, and source 2 registers. Load and store addresses are treated as virtual addresses.
+
+The virtual memory system includes a data TLB, flat page table, page walks on TLB misses, page faults on first access to unmapped pages, frame allocation, finite physical memory, page replacement, and dirty page tracking. The cache is accessed after address translation, so trace replay follows a PIPT-style flow: first TLB/page table, then data cache.
+
+For Phase 3 reporting, use `example.ini`. It matches the uniform assignment configuration: 4 KB pages, 16 DTLB entries, 64 physical frames, LRU replacement, 4 KB direct-mapped L1 data cache, and no L2 cache. The full results for all 10 traces are written in `phase3_report.md`.
 
 ## Usage
 
@@ -19,9 +68,12 @@ python main.py program.asm                   # uses config.json defaults
 python main.py program.asm --forwarding      # enable forwarding
 python main.py program.asm --no-forwarding   # disable forwarding
 python main.py program.asm --no-pipeline     # simple non-pipelined mode
+python main.py phase3_traces/trace01.trace --trace --config example.ini
 ```
 
 ## Config File (`config.json`)
+
+`config.json` is mainly used for Phase 1 and Phase 2. It contains the pipeline flags, instruction latencies, cache hierarchy settings, replacement policy, memory latency, and VM defaults. `example.ini` is kept for the Phase 3 trace-report setup, where L2 is disabled because the assignment asks for no L2 while reporting those numbers. A small part of the config shape is shown below:
 
 ```json
 {
@@ -57,6 +109,22 @@ Comments start with `#`. Labels end with `:`.
 ---
 
 ## Minutes of Meeting
+
+---
+
+### Date: 15-May-2026
+**Members:** Vinay Sai, Maneesh  
+**Duration:** ~2 hours  
+
+Wrapped up the Phase 3 side today. The biggest thing was making trace replay line up with the assignment format instead of just treating traces as raw memory events. Loads and stores now use the register field from the trace, and `ADD`/`MUL` update the trace-mode register file as well. We also cleaned up the config split: `config.json` is still the better file for Phase 1 and Phase 2, while `example.ini` now matches the official Phase 3 reporting setup with 64 frames, 16 DTLB entries, a 4 KB direct-mapped L1, and no L2. Ran all 10 traces and put the numbers into `phase3_report.md`.
+
+---
+
+### Date: 12-May-2026
+**Members:** Vinay Sai, Maneesh  
+**Duration:** ~1.5 hours  
+
+Started tying virtual memory into the simulator. We added the DTLB, flat page table, frame allocation, page walks, page faults, and dirty eviction tracking. The first few trace runs were useful because they made it obvious when the config was too small or when the cache path was still assuming an L2 cache. Once the no-L2 path was working, the trace replay mode became much closer to the Phase 3 requirement.
 
 ---
 

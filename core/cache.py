@@ -149,9 +149,11 @@ class CacheLevel:
 
     def _choose_victim(self, target_set):
         if self.policy == "LRU":
-            return min(target_set, key=lambda line: line.last_used)
+            # Deterministic: use inserted_at as secondary key for tie-breaking
+            return min(target_set, key=lambda line: (line.last_used, line.inserted_at))
         if self.policy == "FIFO":
-            return min(target_set, key=lambda line: line.inserted_at)
+            # Deterministic: use index position as secondary key
+            return min(target_set, key=lambda line: (line.inserted_at, target_set.index(line)))
         return random.choice(target_set)
 
     def _fill_line(self, line, tag, block_base, block_data, current_cycle):
